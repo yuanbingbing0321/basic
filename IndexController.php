@@ -1,34 +1,52 @@
 <?php
-namespace frontend\controllers;
+namespace api\controllers;
 use Yii;
 use yii\web\Controller;
-use common\libs\curl;
 class IndexController extends Controller{
-
 	public $enableCsrfValidation = false;
 	public function actionIndex(){
-		return $this->render('list');
-	}
-	public function actionUpload(){
-		if (yii::$app->request->ispost) {
+
+		$dir = '/usr/share/nginx/html/ybb/advanced/api/upload/excel.xls';
+		$res = move_uploaded_file($_FILES['execl']['tmp_name'], $dir);
+
+		$title = yii::$app->request->post('title');
+		require (__DIR__.'/../../common/libs/PHPExcel.php');
+		header("content-type:text/html;charset = utf-8");
+		$objPHPExcel = \PHPExcel_IOFactory::load($dir);
+		$sheetData = $objPHPExcel->getActiveSheet()->toArray(null,true,true,true);
+		
+		unset($sheetData[1]);
+		$type=array_flip(Yii::$app->params['type']);
+		$score=Yii::$app->params['score'];
+		// var_dump($score);die;
+		// var_dump($sheetData);die;
+		foreach($sheetData as $key => $val){
 			
-			$dir = '../upload/excel.xls';
-			$res = move_uploaded_file($_FILES['execl']['tmp_name'], $dir);
-
-			if ($res) {
-				$url="http://106.12.210.207/ybb/advanced/api/web/index.php?r=index/index";
-				$param['title'] = Yii::$app->request->post("title");
-
-				$file['execl'] = $dir;
-				$reg = curl::_post($url,$param,$file);
+			$arr = array(
+				'stem'=>$val['C'],
+				'unit'=>$title,
+				'type'=>$type[$val['B']],
+				'addtime'=>time(),
+				'sub_people'=>$val['L']
+			);
+			$res = Yii::$app->db->createCommand()->insert('subject',$arr)->execute();
+			$tid = Yii::$app->db->getLastInsertID();
+			$an_num = array('D' => 'A', 'E'=>'B','F'=>'C','G'=>'D','H'=>"E",'I'=>'F');
+			$yesinfo = str_split($val['J'],1);
+			for ($i='D'; $i < 'I'; $i++) { 
 				
-				// var_dump($param);die;
-				if ($reg) {
-					echo $reg;die;
-				}
+				if (empty($val[$i])) continue;
+				$is_true = in_array($an_num[$i], $yesinfo) ? 1:0;
+				$arr2 = array(
+					'tid'=>$tid,
+					'option'=>$val[$i],
+					'is_option'=>$is_true
+				);
+				$ress = Yii::$app->db->createCommand()->insert('answer',$arr2)->execute();
 			}
-		}else{
-			return $this->render('upload');
+		}
+		if ($res && $ress) {
+			echo 1;
 		}
 	}
 }
